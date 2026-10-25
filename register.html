@@ -1,69 +1,75 @@
 <!doctype html>
-<html lang="ko">
-<head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>자료 등록 | 학습자료 공유 서비스</title><link rel="stylesheet" href="style.css">
-</head>
-<body>
-<header><a href="index.html"><h1>학습자료 공유 서비스</h1></a></header>
-<main>
-  <div class="top-actions"><h2>학습자료 등록</h2><a class="back" href="index.html">← 홈으로</a></div>
-  <form id="registerForm" novalidate>
-    <div class="field"><label for="title">제목 <span class="required">*</span></label><input id="title" placeholder="자료 제목을 입력하세요"></div>
-    <div class="field"><label for="description">설명</label><textarea id="description" rows="4" placeholder="자료 설명을 입력하세요"></textarea></div>
-    <div class="field"><label for="subject">과목 <span class="required">*</span></label><select id="subject"></select></div>
-    <div class="field"><label for="unit">단원 <span class="required">*</span></label><select id="unit" disabled><option value="">먼저 과목을 선택하세요</option></select></div>
-    <div class="field"><label for="type">자료 유형 <span class="required">*</span></label><select id="type"></select></div>
-    <div class="field"><label for="tags">태그</label><input id="tags" placeholder="예: 화학결합, 공유결합"></div>
-    <div class="field"><label for="pdf">PDF 파일 <span class="required">*</span></label><input id="pdf" type="file" accept=".pdf,application/pdf"></div>
-    <p class="hint">* 표시는 필수 항목입니다.</p>
-    <button type="submit">자료 등록</button>
-    <p id="message" class="message" aria-live="polite"></p>
-  </form>
-</main>
-<script src="data.js"></script>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>자료 등록 | 학습자료 공유 서비스</title><link rel="stylesheet" href="style.css"></head>
+<body><header><a href="index.html"><h1>학습자료 공유 서비스</h1></a></header><main>
+<div class="top-actions"><h2>학습자료 등록</h2><a class="back" href="index.html">← 홈으로</a></div>
+<section class="auth-box" aria-label="이메일 인증"><h3>이메일 로그인</h3><p class="hint">PDF 자료 등록은 이메일로 로그인한 사용자만 가능합니다. 가입 시 이메일 인증이 필요할 수 있습니다.</p>
+<div class="auth-fields"><input id="email" type="email" autocomplete="email" placeholder="이메일"><input id="password" type="password" autocomplete="current-password" minlength="6" placeholder="비밀번호 (6자 이상)"></div>
+<div class="button-row"><button id="loginBtn" type="button">로그인</button><button id="signupBtn" type="button" class="secondary">회원가입</button><button id="logoutBtn" type="button" class="secondary" hidden>로그아웃</button></div>
+<p id="authMessage" class="message" aria-live="polite"></p></section>
+<form id="registerForm" novalidate>
+<div class="field"><label for="title">제목 <span class="required">*</span></label><input id="title" maxlength="200" placeholder="자료 제목을 입력하세요"></div>
+<div class="field"><label for="description">설명</label><textarea id="description" rows="4" placeholder="자료 설명을 입력하세요"></textarea></div>
+<div class="field"><label for="subject">과목 <span class="required">*</span></label><select id="subject"></select></div>
+<div class="field"><label for="unit">단원 <span class="required">*</span></label><select id="unit" disabled><option value="">먼저 과목을 선택하세요</option></select></div>
+<div class="field"><label for="type">자료 유형 <span class="required">*</span></label><select id="type"></select></div>
+<div class="field"><label for="tags">태그</label><input id="tags" placeholder="예: 화학결합, 공유결합"></div>
+<div class="field"><label for="pdf">PDF 파일 <span class="required">*</span></label><input id="pdf" type="file" accept=".pdf,application/pdf"><p class="hint">PDF 파일만 등록할 수 있으며 최대 10MB입니다.</p></div>
+<div id="previewArea" hidden><h3>선택한 PDF 미리보기</h3><iframe id="pdfPreview" title="PDF 미리보기" class="pdf-preview"></iframe><p><a id="previewLink" target="_blank" rel="noopener noreferrer">새 탭에서 열기</a></p></div>
+<p class="hint">* 표시는 필수 항목입니다.</p><button id="submitBtn" type="submit">PDF 자료 등록</button>
+<p id="message" class="message" aria-live="polite"></p></form></main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.0/dist/umd/supabase.min.js"></script>
+<script src="supabase-config.js"></script><script src="data.js"></script>
 <script>
-const subject = document.getElementById("subject");
-const unit = document.getElementById("unit");
-const type = document.getElementById("type");
-fillSubjects(subject, "과목을 선택하세요");
-fillTypes(type, "자료 유형을 선택하세요");
-subject.addEventListener("change", () => fillUnits(subject.value, unit, "단원을 선택하세요"));
-
-document.getElementById("registerForm").addEventListener("submit", (e) => {
-  e.preventDefault();
-  const title = document.getElementById("title").value.trim();
-  const pdf = document.getElementById("pdf").files[0];
-  const message = document.getElementById("message");
-  message.className = "message";
-
-  if (!title) { message.textContent = "제목을 입력하세요."; message.classList.add("error"); return; }
-  if (!subject.value) { message.textContent = "과목을 선택하세요."; message.classList.add("error"); return; }
-  if (!unit.value) { message.textContent = "단원을 선택하세요."; message.classList.add("error"); return; }
-  if (!type.value) { message.textContent = "자료 유형을 선택하세요."; message.classList.add("error"); return; }
-  if (!pdf) { message.textContent = "PDF 파일을 선택하세요."; message.classList.add("error"); return; }
-  if (!pdf.name.toLowerCase().endsWith(".pdf")) { message.textContent = "PDF 파일만 등록할 수 있습니다."; message.classList.add("error"); return; }
-
-  // 프론트 단계의 임시 등록: 브라우저 localStorage에 메타데이터 저장
-  // 보안상 브라우저는 선택한 로컬 PDF 자체를 localStorage에 저장하지 않는다.
-  const saved = JSON.parse(localStorage.getItem("materials") || "[]");
-  saved.push({
-    id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
-    title,
-    description: document.getElementById("description").value.trim(),
-    subject: subject.value,
-    unit: unit.value,
-    type: type.value,
-    tags: document.getElementById("tags").value.trim(),
-    fileName: pdf.name,
-    createdAt: new Date().toISOString()
-  });
-  localStorage.setItem("materials", JSON.stringify(saved));
-  message.textContent = "등록되었습니다. 현재 버전에서는 자료 정보와 PDF 파일명만 이 브라우저에 임시 저장됩니다.";
-  message.classList.add("success");
-  e.target.reset();
-  unit.innerHTML = '<option value="">먼저 과목을 선택하세요</option>';
-  unit.disabled = true;
+const $ = id => document.getElementById(id);
+const subject = $("subject"), unit = $("unit"), type = $("type");
+fillSubjects(subject,"과목을 선택하세요"); fillTypes(type,"자료 유형을 선택하세요");
+subject.addEventListener("change",()=>fillUnits(subject.value,unit,"단원을 선택하세요"));
+let previewUrl;
+$("pdf").addEventListener("change",()=>{
+  if(previewUrl) URL.revokeObjectURL(previewUrl);
+  const file=$("pdf").files[0]; $("previewArea").hidden=!file;
+  if(file){previewUrl=URL.createObjectURL(file);$("pdfPreview").src=previewUrl;$("previewLink").href=previewUrl;}
 });
-</script>
-</body></html>
+window.addEventListener("pagehide",()=>{if(previewUrl) URL.revokeObjectURL(previewUrl);});
+function show(id,text,error=false){$(id).textContent=text;$(id).className="message "+(error?"error":"success");}
+async function refreshAuth(){
+ const {data:{user}}=await db.auth.getUser();
+ $("logoutBtn").hidden=!user; $("loginBtn").hidden=!!user; $("signupBtn").hidden=!!user;
+ $("email").disabled=!!user;$("password").disabled=!!user;
+ show("authMessage",user?"로그인됨: "+user.email:"자료를 등록하려면 로그인해 주세요.");
+}
+$("loginBtn").addEventListener("click",async()=>{
+ const {error}=await db.auth.signInWithPassword({email:$("email").value.trim(),password:$("password").value});
+ if(error) show("authMessage",error.message,true); else {show("authMessage","로그인되었습니다.");refreshAuth();}
+});
+$("signupBtn").addEventListener("click",async()=>{
+ const {error}=await db.auth.signUp({email:$("email").value.trim(),password:$("password").value});
+ if(error) show("authMessage",error.message,true); else show("authMessage","회원가입 요청이 완료되었습니다. 이메일 인증이 필요하면 받은 편지함을 확인한 뒤 로그인하세요.");
+});
+$("logoutBtn").addEventListener("click",async()=>{await db.auth.signOut();refreshAuth();});
+db.auth.onAuthStateChange(()=>{setTimeout(refreshAuth,0);});refreshAuth();
+$("registerForm").addEventListener("submit",async e=>{
+ e.preventDefault();const file=$("pdf").files[0];const title=$("title").value.trim();
+ if(!title||!subject.value||!unit.value||!type.value||!file){show("message","제목, 과목, 단원, 자료 유형, PDF를 모두 입력하세요.",true);return;}
+ if(!file.name.toLowerCase().endsWith(".pdf")||file.type!=="application/pdf"){show("message","PDF 파일만 등록할 수 있습니다.",true);return;}
+ if(file.size>10*1024*1024){show("message","PDF는 10MB 이하만 등록할 수 있습니다.",true);return;}
+ const {data:{user},error:userError}=await db.auth.getUser();
+ if(userError||!user){show("message","먼저 이메일 로그인을 완료해 주세요.",true);return;}
+ $("submitBtn").disabled=true;show("message","PDF 업로드 중입니다...");
+ try {
+   const path=user.id+"/"+crypto.randomUUID()+".pdf";
+   const {error:uploadError}=await db.storage.from(PDF_BUCKET).upload(path,file,{contentType:"application/pdf",upsert:false});
+   if(uploadError) throw uploadError;
+   const material={title,description:$("description").value.trim(),subject:subject.value,unit:unit.value,
+     material_type:type.value,tags:$("tags").value.split(",").map(t=>t.trim()).filter(Boolean),
+     pdf_path:path,file_name:file.name,owner_id:user.id};
+   const {error:insertError}=await db.from("materials").insert(material);
+   if(insertError) throw new Error("PDF 업로드는 완료되었지만 자료 정보 저장에 실패했습니다: "+insertError.message);
+   show("message","자료가 등록되었습니다. 자료 탐색 화면에서 PDF를 열 수 있습니다.");
+   e.target.reset();unit.innerHTML='<option value="">먼저 과목을 선택하세요</option>';unit.disabled=true;
+   $("previewArea").hidden=true;if(previewUrl){URL.revokeObjectURL(previewUrl);previewUrl=null;}
+ }catch(err){show("message","등록 실패: "+err.message,true);}
+ finally{$("submitBtn").disabled=false;}
+});
+</script></body></html>
