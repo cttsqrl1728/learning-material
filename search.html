@@ -1,76 +1,50 @@
-<!doctype html>
-<html lang="ko">
-<head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>자료 탐색 | 학습자료 공유 서비스</title><link rel="stylesheet" href="style.css">
-</head>
-<body>
-<header><a href="index.html"><h1>학습자료 공유 서비스</h1></a></header>
-<main>
-  <div class="top-actions"><h2>학습자료 탐색</h2><a class="back" href="index.html">← 홈으로</a></div>
-  <div class="filters">
-    <div class="field"><label for="keyword">검색어</label><input id="keyword" placeholder="제목, 설명, 태그 검색"></div>
-    <div class="field"><label for="subject">과목</label><select id="subject"></select></div>
-    <div class="field"><label for="unit">단원</label><select id="unit" disabled><option value="">전체</option></select></div>
-    <div class="field"><label for="type">자료 유형</label><select id="type"></select></div>
-    <div class="field"><label for="sort">정렬</label><select id="sort"><option value="latest">최신순</option><option value="subject">과목순</option></select></div>
-    <button id="searchBtn" type="button">검색</button>
-  </div>
-  <h3>검색 결과 (<span id="count">0</span>건)</h3>
-  <div id="results" class="results"></div>
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>자료 탐색 | 학습자료 공유 서비스</title><link rel="stylesheet" href="style.css"></head>
+<body><header><a href="index.html"><h1>학습자료 공유 서비스</h1></a></header><main>
+<div class="top-actions"><h2>학습자료 탐색</h2><a class="back" href="index.html">← 홈으로</a></div>
+<div class="filters"><div class="field"><label for="keyword">검색어</label><input id="keyword" placeholder="제목, 설명, 태그 검색"></div>
+<div class="field"><label for="subject">과목</label><select id="subject"></select></div>
+<div class="field"><label for="unit">단원</label><select id="unit" disabled><option value="">전체</option></select></div>
+<div class="field"><label for="type">자료 유형</label><select id="type"></select></div>
+<div class="field"><label for="sort">정렬</label><select id="sort"><option value="latest">최신순</option><option value="subject">과목순</option></select></div>
+<button id="searchBtn" type="button">검색</button></div>
+<h3>검색 결과 (<span id="count">0</span>건)</h3><p id="status" class="message" aria-live="polite"></p><div id="results" class="results"></div>
 </main>
-<script src="data.js"></script>
-<script>
-const subject = document.getElementById("subject");
-const unit = document.getElementById("unit");
-const type = document.getElementById("type");
-fillSubjects(subject, "전체");
-fillTypes(type, "전체");
-subject.addEventListener("change", () => fillUnits(subject.value, unit, "전체"));
-
-function getMaterials() {
-  const saved = JSON.parse(localStorage.getItem("materials") || "[]");
-  const samples = [
-    {id:"sample1", title:"화학 결합 개념 정리", description:"이온결합과 공유결합 핵심 정리", subject:"통합과학", unit:"물질과 규칙성", type:"개념 정리", tags:"화학결합, 공유결합", fileName:"sample.pdf", createdAt:"2026-09-28T00:00:00.000Z"},
-    {id:"sample2", title:"다항식 시험 대비", description:"다항식 핵심 문제 정리", subject:"공통수학", unit:"다항식", type:"시험 대비", tags:"다항식, 시험", fileName:"math.pdf", createdAt:"2026-09-27T00:00:00.000Z"}
-  ];
-  return [...saved, ...samples];
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.0/dist/umd/supabase.min.js"></script>
+<script src="supabase-config.js"></script><script src="data.js"></script><script>
+const $=id=>document.getElementById(id);
+const subject=$("subject"),unit=$("unit"),type=$("type");
+fillSubjects(subject,"전체");fillTypes(type,"전체");
+subject.addEventListener("change",()=>fillUnits(subject.value,unit,"전체"));
+let allMaterials=[];
+function render(){
+ const keyword=$("keyword").value.trim().toLowerCase();
+ let list=allMaterials.filter(m=>(!keyword||[m.title,m.description,...(m.tags||[])].join(" ").toLowerCase().includes(keyword))
+ &&(!subject.value||m.subject===subject.value)&&(!unit.value||m.unit===unit.value)
+ &&(!type.value||m.material_type===type.value));
+ if($("sort").value==="latest")list.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+ else list.sort((a,b)=>a.subject.localeCompare(b.subject,"ko"));
+ $("count").textContent=String(list.length);const results=$("results");results.replaceChildren();
+ if(!list.length){const p=document.createElement("p");p.className="empty";p.textContent="조건에 맞는 자료가 없습니다.";results.append(p);return;}
+ for(const m of list){
+   const card=document.createElement("article");card.className="card";
+   const h=document.createElement("h3");h.textContent=m.title;card.append(h);
+   const meta=document.createElement("p");meta.className="meta";meta.textContent=[m.subject,m.unit,m.material_type].join(" · ");card.append(meta);
+   const desc=document.createElement("p");desc.textContent=m.description||"설명 없음";card.append(desc);
+   const tags=document.createElement("p");tags.className="meta";tags.textContent="태그: "+((m.tags||[]).join(", ")||"없음")+" / 파일명: "+m.file_name;card.append(tags);
+   const link=document.createElement("a");link.textContent="PDF 열기";link.target="_blank";link.rel="noopener noreferrer";
+   const {data}=db.storage.from(PDF_BUCKET).getPublicUrl(m.pdf_path);link.href=data.publicUrl;
+   card.append(link);results.append(card);
+ }
 }
-
-function render() {
-  const keyword = document.getElementById("keyword").value.trim().toLowerCase();
-  let list = getMaterials().filter(m => {
-    const searchable = `${m.title} ${m.description || ""} ${m.tags || ""}`.toLowerCase();
-    return (!keyword || searchable.includes(keyword))
-      && (!subject.value || m.subject === subject.value)
-      && (!unit.value || m.unit === unit.value)
-      && (!type.value || m.type === type.value);
-  });
-
-  if (document.getElementById("sort").value === "latest") {
-    list.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
-  } else {
-    list.sort((a,b) => a.subject.localeCompare(b.subject, "ko"));
-  }
-
-  document.getElementById("count").textContent = list.length;
-  const results = document.getElementById("results");
-  results.innerHTML = "";
-  if (!list.length) {
-    results.innerHTML = '<p class="empty">조건에 맞는 자료가 없습니다.</p>';
-    return;
-  }
-  list.forEach(m => {
-    const el = document.createElement("article");
-    el.className = "card";
-    el.innerHTML = `<h3>${m.title}</h3>
-      <p class="meta">${m.subject} · ${m.unit} · ${m.type}</p>
-      <p>${m.description || "설명 없음"}</p>
-      <p class="meta">태그: ${m.tags || "없음"} / 파일명: ${m.fileName || "없음"}</p>`;
-    results.appendChild(el);
-  });
+async function loadMaterials(){
+ $("status").textContent="자료를 불러오는 중입니다...";
+ const {data,error}=await db.from("materials").select("id,title,description,subject,unit,material_type,tags,pdf_path,file_name,created_at").order("created_at",{ascending:false}).limit(1000);
+ if(error){$("status").textContent="자료를 불러오지 못했습니다: "+error.message;$("status").className="message error";return;}
+ allMaterials=data||[];$("status").textContent="";render();
 }
-document.getElementById("searchBtn").addEventListener("click", render);
-render();
-</script>
-</body></html>
+$("searchBtn").addEventListener("click",loadMaterials);
+["keyword","subject","unit","type","sort"].forEach(id=>$(id).addEventListener("change",render));
+$("keyword").addEventListener("input",render);
+loadMaterials();
+</script></body></html>
