@@ -14,7 +14,7 @@
 <div class="field"><label for="unit">단원 <span class="required">*</span></label><select id="unit" disabled><option value="">먼저 과목을 선택하세요</option></select></div>
 <div class="field"><label for="type">자료 유형 <span class="required">*</span></label><select id="type"></select></div>
 <div class="field"><label for="tags">태그</label><input id="tags" placeholder="예: 화학결합, 공유결합"></div>
-<div class="field"><label for="pdf">PDF 파일 <span class="required">*</span></label><input id="pdf" type="file" accept=".pdf,application/pdf"><p class="hint">PDF 파일만 등록할 수 있으며 최대 10MB입니다.</p></div>
+<div class="field"><label for="pdf" id="pdfLabel">PDF 파일 <span class="required">*</span></label><input id="pdf" type="file" accept=".pdf,application/pdf"><p class="hint">PDF 파일만 등록할 수 있으며 최대 10MB입니다.</p></div>
 <div id="previewArea" hidden><h3>선택한 PDF 미리보기</h3><iframe id="pdfPreview" title="PDF 미리보기" class="pdf-preview"></iframe><p><a id="previewLink" target="_blank" rel="noopener noreferrer">새 탭에서 열기</a></p></div>
 <p class="hint" id="pdfRequiredHint">* 표시는 필수 항목입니다.</p><button id="submitBtn" type="submit">PDF 자료 등록</button>
 <p id="message" class="message" aria-live="polite"></p></form></main>
@@ -58,7 +58,7 @@ async function loadEditMaterial(user){
  $("title").value=data.title;$("description").value=data.description;
  subject.value=data.subject;fillUnits(data.subject,unit,"단원을 선택하세요");unit.value=data.unit;
  type.value=data.material_type;$("tags").value=(data.tags||[]).join(", ");
- $("pdf").closest(".field").hidden=true;$("pdfRequiredHint").textContent="PDF 파일은 유지되며 제목·설명·분류·태그만 수정할 수 있습니다.";
+ $("pdfLabel").textContent="PDF 파일 교체 (선택)";$("pdfRequiredHint").textContent="새 PDF를 선택하면 기존 파일을 교체합니다. 선택하지 않으면 기존 PDF가 유지됩니다.";
 }
 $("registerForm").addEventListener("submit",async e=>{
  e.preventDefault();const file=$("pdf").files[0];const title=$("title").value.trim();
@@ -72,9 +72,32 @@ $("registerForm").addEventListener("submit",async e=>{
    if(editId){
      if(!originalMaterial||originalMaterial.owner_id!==user.id) throw new Error("수정 권한이 없습니다.");
      const changes={title,description:$("description").value.trim(),subject:subject.value,unit:unit.value,material_type:type.value,tags:$("tags").value.split(",").map(t=>t.trim()).filter(Boolean)};
-     const {data:updated,error:updateError}=await db.from("materials").update(changes).eq("id",editId).eq("owner_id",user.id).select("id");
-     if(updateError) throw updateError;if(!updated?.length) throw new Error("자료를 수정할 수 없습니다.");
-     show("message","수정되었습니다. 자료 탐색 화면에서 확인하세요.");return;
+     let newPath=null;
+     if(file){
+       newPath=user.id+"/"+crypto.randomUUID()+".pdf";
+       show("message","새 PDF 업로드 중입니다...");
+       const {error:uploadError}=await db.storage.from(PDF_BUCKET).upload(newPath,file,{contentType:"application/pdf",upsert:false});
+       if(uploadError) throw new Error("새 PDF 업로드 실패: "+uploadError.message);
+       changes.pdf_path=newPath;changes.file_name=file.name;
+     }
+     const {data:updated,error:updateError}=await db.from("materials").update(changes)
+       .eq("id",editId).eq("owner_id",user.id)
+       .eq("pdf_path",originalMaterial.pdf_path).select("id,pdf_path,file_name");
+     if(updateError||!updated?.length){
+       if(newPath) await db.storage.from(PDF_BUCKET).remove([newPath]);
+       throw new Error(updateError?.message||"자료가 다른 곳에서 변경되었거나 수정 권한이 없습니다.");
+     }
+     if(newPath){
+       const oldPath=originalMaterial.pdf_path;
+       originalMaterial.pdf_path=newPath;originalMaterial.file_name=file.name;
+       const {error:removeError}=await db.storage.from(PDF_BUCKET).remove([oldPath]);
+       if(removeError) show("message","새 PDF로 교체되었습니다. 이전 파일 정리에 실패했지만 새 PDF는 정상 등록되었습니다.",true);
+       else show("message","PDF 교체와 자료 수정이 완료되었습니다.");
+       $("pdf").value="";$("previewArea").hidden=true;
+       if(previewUrl){URL.revokeObjectURL(previewUrl);previewUrl=null;}
+     }else show("message","자료 정보가 수정되었습니다.");
+     Object.assign(originalMaterial,changes);
+     return;
    }
    const path=user.id+"/"+crypto.randomUUID()+".pdf";
    const {error:uploadError}=await db.storage.from(PDF_BUCKET).upload(path,file,{contentType:"application/pdf",upsert:false});
@@ -87,7 +110,7 @@ $("registerForm").addEventListener("submit",async e=>{
    show("message","자료가 등록되었습니다. 자료 탐색 화면에서 PDF를 열 수 있습니다.");
    e.target.reset();unit.innerHTML='<option value="">먼저 과목을 선택하세요</option>';unit.disabled=true;
    $("previewArea").hidden=true;if(previewUrl){URL.revokeObjectURL(previewUrl);previewUrl=null;}
- }catch(err){show("message","등록 실패: "+err.message,true);}
+ }catch(err){show("message",(editId?"수정 실패: ":"등록 실패: ")+err.message,true);}
  finally{$("submitBtn").disabled=false;}
 });
 </script></body></html>
