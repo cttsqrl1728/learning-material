@@ -65,7 +65,7 @@ async function deleteMaterial(m){
 }
 async function reportMaterial(m){
  if(!currentUser)return;
- const reason=prompt("신고 사유를 입력하세요. (5자 이상, 1000자 이하)\\n예: 내용 오류, 저작권 침해, 부적절한 자료");
+ const reason=prompt("신고 사유를 입력하세요. (5자 이상, 1000자 이하)\n예: 내용 오류, 저작권 침해, 부적절한 자료");
  if(reason===null)return;
  const value=reason.trim();
  if(value.length<5||value.length>1000){alert("신고 사유는 5~1000자로 입력해 주세요.");return;}
