@@ -8,7 +8,7 @@
 <div class="field"><label for="type">자료 유형</label><select id="type"></select></div>
 <div class="field"><label for="sort">정렬</label><select id="sort"><option value="latest">최신순</option><option value="subject">과목순</option></select></div>
 <button id="searchBtn" type="button">검색</button></div>
-<h3>검색 결과 (<span id="count">0</span>건)</h3><p id="status" class="message" aria-live="polite"></p><div id="results" class="results"></div>
+<p class="hint" id="loginHint">수정·삭제 및 신고 기능은 로그인 후 이용할 수 있습니다. <a href="register.html">로그인하기</a></p>\n<h3>검색 결과 (<span id="count">0</span>건)</h3><p id="status" class="message" aria-live="polite"></p><div id="results" class="results"></div>
 </main>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.0/dist/umd/supabase.min.js"></script>
 <script src="supabase-config.js"></script><script src="data.js"></script><script>
@@ -16,7 +16,7 @@ const $=id=>document.getElementById(id);
 const subject=$("subject"),unit=$("unit"),type=$("type");
 fillSubjects(subject,"전체");fillTypes(type,"전체");
 subject.addEventListener("change",()=>fillUnits(subject.value,unit,"전체"));
-let allMaterials=[];
+let allMaterials=[];let currentUser=null;
 function render(){
  const keyword=$("keyword").value.trim().toLowerCase();
  let list=allMaterials.filter(m=>(!keyword||[m.title,m.description,...(m.tags||[])].join(" ").toLowerCase().includes(keyword))
@@ -34,17 +34,49 @@ function render(){
    const tags=document.createElement("p");tags.className="meta";tags.textContent="태그: "+((m.tags||[]).join(", ")||"없음")+" / 파일명: "+m.file_name;card.append(tags);
    const link=document.createElement("a");link.textContent="PDF 열기";link.target="_blank";link.rel="noopener noreferrer";
    const {data}=db.storage.from(PDF_BUCKET).getPublicUrl(m.pdf_path);link.href=data.publicUrl;
-   card.append(link);results.append(card);
+   card.append(link);
+   const actions=document.createElement("div");actions.className="button-row";
+   if(currentUser && m.owner_id===currentUser.id){
+     const edit=document.createElement("a");edit.href="register.html?edit="+encodeURIComponent(m.id);edit.textContent="수정";edit.className="action-link";actions.append(edit);
+     const del=document.createElement("button");del.type="button";del.className="secondary";del.textContent="삭제";
+     del.addEventListener("click",()=>deleteMaterial(m));actions.append(del);
+   }
+   if(currentUser && m.owner_id!==currentUser.id){
+     const report=document.createElement("button");report.type="button";report.className="secondary";report.textContent="잘못된 자료 신고";
+     report.addEventListener("click",()=>reportMaterial(m));actions.append(report);
+   }
+   card.append(actions);results.append(card);
  }
 }
 async function loadMaterials(){
  $("status").textContent="자료를 불러오는 중입니다...";
- const {data,error}=await db.from("materials").select("id,title,description,subject,unit,material_type,tags,pdf_path,file_name,created_at").order("created_at",{ascending:false}).limit(1000);
+ const {data,error}=await db.from("materials").select("id,title,description,subject,unit,material_type,tags,pdf_path,file_name,owner_id,created_at").order("created_at",{ascending:false}).limit(1000);
  if(error){$("status").textContent="자료를 불러오지 못했습니다: "+error.message;$("status").className="message error";return;}
  allMaterials=data||[];$("status").textContent="";render();
 }
+async function deleteMaterial(m){
+ if(!currentUser||m.owner_id!==currentUser.id)return;
+ if(!confirm("이 자료를 영구 삭제하시겠습니까? 삭제 후 복구할 수 없습니다."))return;
+ const {error:fileError}=await db.storage.from(PDF_BUCKET).remove([m.pdf_path]);
+ if(fileError){alert("PDF 삭제 실패: "+fileError.message);return;}
+ const {data,error}=await db.from("materials").delete().eq("id",m.id).eq("owner_id",currentUser.id).select("id");
+ if(error||!data?.length){alert("자료 정보 삭제에 실패했습니다: "+(error?.message||"권한 확인 필요"));return;}
+ await loadMaterials();
+}
+async function reportMaterial(m){
+ if(!currentUser)return;
+ const reason=prompt("신고 사유를 입력하세요. (5자 이상, 1000자 이하)\\n예: 내용 오류, 저작권 침해, 부적절한 자료");
+ if(reason===null)return;
+ const value=reason.trim();
+ if(value.length<5||value.length>1000){alert("신고 사유는 5~1000자로 입력해 주세요.");return;}
+ const {error}=await db.from("material_reports").insert({material_id:m.id,reporter_id:currentUser.id,reason:value});
+ if(error){alert(error.code==="23505"?"이미 신고한 자료입니다.":"신고 실패: "+error.message);return;}
+ alert("신고가 접수되었습니다. 신고만으로 자료가 자동 삭제되지는 않습니다.");
+}
+async function refreshUser(){const {data:{user}}=await db.auth.getUser();currentUser=user;$("loginHint").hidden=!!user;render();}
+db.auth.onAuthStateChange(()=>setTimeout(refreshUser,0));
 $("searchBtn").addEventListener("click",loadMaterials);
 ["keyword","subject","unit","type","sort"].forEach(id=>$(id).addEventListener("change",render));
 $("keyword").addEventListener("input",render);
-loadMaterials();
+loadMaterials();refreshUser();
 </script></body></html>
