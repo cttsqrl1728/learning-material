@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>신고 관리 | 학습자료 공유 서비스</title><link rel="stylesheet" href="style.css"></head>
+<body><header><a href="index.html"><h1>학습자료 공유 서비스</h1></a></header><main>
+<div class="top-actions"><h2>신고 관리</h2><a class="back" href="search.html">← 자료 탐색</a></div>
+<section class="auth-box"><h3>관리자 로그인</h3><div class="auth-fields"><input id="email" type="email" placeholder="관리자 이메일" autocomplete="email"><input id="password" type="password" placeholder="비밀번호" autocomplete="current-password"></div><div class="button-row"><button id="login" type="button">로그인</button><button id="logout" type="button" class="secondary" hidden>로그아웃</button></div><p id="authStatus" class="message" aria-live="polite"></p></section>
+<section id="adminPanel" hidden><div class="top-actions"><h3>접수된 신고 (<span id="count">0</span>건)</h3><button id="reload" type="button" class="secondary">새로고침</button></div><div id="reports" class="results"></div><p id="status" class="message" aria-live="polite"></p></section>
+</main><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.0/dist/umd/supabase.min.js"></script><script src="supabase-config.js"></script><script>
+const $=id=>document.getElementById(id);
+let admin=false;
+function message(id,text,error=false){$(id).textContent=text;$(id).className="message "+(error?"error":"success");}
+async function refresh(){
+ const {data:{user}}=await db.auth.getUser();
+ $("logout").hidden=!user;$("login").hidden=!!user;$("email").disabled=!!user;$("password").disabled=!!user;
+ if(!user){admin=false;$("adminPanel").hidden=true;message("authStatus","관리자 계정으로 로그인해 주세요.");return;}
+ const {data,error}=await db.rpc("is_site_admin");
+ admin=!error&&data===true;$("adminPanel").hidden=!admin;
+ message("authStatus",admin?"관리자 인증 완료":"이 계정에는 관리자 권한이 없습니다.",!admin);
+ if(admin)await load();
+}
+$("login").onclick=async()=>{const {error}=await db.auth.signInWithPassword({email:$("email").value.trim(),password:$("password").value});if(error)message("authStatus",error.message,true);else refresh();};
+$("logout").onclick=async()=>{await db.auth.signOut();refresh();};
+async function load(){
+ if(!admin)return;
+ message("status","신고 목록을 불러오는 중입니다...");
+ const {data,error}=await db.from("material_reports").select("id,material_id,reason,status,created_at,reviewed_at").order("created_at",{ascending:false}).limit(500);
+ if(error){message("status",error.message,true);return;}
+ const ids=[...new Set((data||[]).map(r=>r.material_id))];
+ let materials=new Map();
+ if(ids.length){const {data:rows,error:materialError}=await db.from("materials").select("id,title,subject,unit,pdf_path,is_hidden").in("id",ids);if(materialError){message("status",materialError.message,true);return;}materials=new Map((rows||[]).map(m=>[m.id,m]));}
+ $("count").textContent=String((data||[]).filter(r=>r.status==="pending").length);
+ $("reports").replaceChildren();
+ for(const report of data||[]){
+  const m=materials.get(report.material_id);
+  const card=document.createElement("article");card.className="card";
+  const title=document.createElement("h3");title.textContent=m?.title||"삭제된 자료";card.append(title);
+  const info=document.createElement("p");info.className="meta";info.textContent=[m?.subject,m?.unit,new Date(report.created_at).toLocaleString("ko-KR"),"상태: "+({pending:"접수",dismissed:"기각",hidden:"숨김 처리",resolved:"처리 완료"}[report.status]||report.status)].filter(Boolean).join(" · ");card.append(info);
+  const reason=document.createElement("p");reason.textContent="신고 사유: "+report.reason;card.append(reason);
+  if(m){const link=document.createElement("a");link.textContent="PDF 확인";link.target="_blank";link.rel="noopener noreferrer";link.href=db.storage.from(PDF_BUCKET).getPublicUrl(m.pdf_path).data.publicUrl;card.append(link);}
+  if(report.status==="pending"){
+   const actions=document.createElement("div");actions.className="button-row";
+   for(const [action,label] of [["hidden","자료 숨김"],["dismissed","신고 기각"],["resolved","처리 완료"]]){
+    const button=document.createElement("button");button.type="button";button.className=action==="hidden"?"":"secondary";button.textContent=label;
+    button.onclick=async()=>{if(!confirm(label+" 처리하시겠습니까?"))return;button.disabled=true;const {error}=await db.rpc("moderate_material_report",{p_report_id:report.id,p_action:action});if(error){alert("처리 실패: "+error.message);button.disabled=false;}else await load();};
+    actions.append(button);
+   }
+   card.append(actions);
+  }
+  $("reports").append(card);
+ }
+ if(!(data||[]).length){const p=document.createElement("p");p.className="empty";p.textContent="접수된 신고가 없습니다."; $("reports").append(p);}
+ message("status","신고 목록을 불러왔습니다.");
+}
+$("reload").onclick=load;
+db.auth.onAuthStateChange(()=>setTimeout(refresh,0));refresh();
+</script></body></html>
