@@ -58,7 +58,7 @@ async function loadEditMaterial(user){
  $("title").value=data.title;$("description").value=data.description;
  subject.value=data.subject;fillUnits(data.subject,unit,"단원을 선택하세요");unit.value=data.unit;
  type.value=data.material_type;$("tags").value=(data.tags||[]).join(", ");
- $("pdf").required=false;$("pdfRequiredHint").textContent="PDF를 새로 선택하지 않으면 기존 PDF가 유지됩니다. (최대 10MB)";
+ $("pdf").closest(".field").hidden=true;$("pdfRequiredHint").textContent="PDF 파일은 유지되며 제목·설명·분류·태그만 수정할 수 있습니다.";
 }
 $("registerForm").addEventListener("submit",async e=>{
  e.preventDefault();const file=$("pdf").files[0];const title=$("title").value.trim();
