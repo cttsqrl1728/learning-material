@@ -1,56 +1,115 @@
 <!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>신고 관리 | 학습자료 공유 서비스</title><link rel="stylesheet" href="style.css"></head>
+<title>신고 관리 | 학습자료 공유 서비스</title><link rel="stylesheet" href="style.css">
+<style>
+.admin-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.admin-auth{padding:18px;border:1px solid #d8e0da;border-radius:12px;background:#f7faf8;margin:16px 0 24px}
+.admin-auth h3{margin:0 0 12px}.admin-auth .auth-fields{margin-bottom:10px}
+.admin-verified{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.admin-verified strong{color:#17683a}.admin-verified p{margin:4px 0 0;color:#59665d;font-size:.9rem}
+.admin-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:18px 0 22px}
+.admin-stat{border:1px solid #d8e0da;background:#f7faf8;border-radius:12px;padding:16px;text-align:center}
+.admin-stat strong{display:block;font-size:1.75rem;line-height:1.3}.admin-stat span{color:#526057;font-size:.9rem}
+.admin-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
+.admin-tabs button{border-radius:30px;padding:9px 14px;background:#eef2ef;color:#263b30;border:1px solid #d8e0da}
+.admin-tabs button[aria-pressed="true"]{background:#334d40;color:white}
+.admin-report{border:1px solid #d8e0da;border-radius:12px;padding:18px;margin:12px 0;background:white}
+.admin-report h4{margin:0;font-size:1.1rem}
+.admin-report-head{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap}
+.admin-chip{padding:5px 10px;border-radius:20px;background:#edf1ee;font-size:.85rem;font-weight:600}
+.admin-chip.pending{background:#fff0d2;color:#80510a}
+.admin-chip.hidden{background:#e7edf9;color:#2c5184}
+.admin-report .meta{margin:10px 0;color:#59665d}
+.admin-report .reason{padding:12px;border-radius:8px;background:#f7faf8;margin:12px 0}
+.admin-report .outcome{margin:10px 0;color:#375e47}
+.admin-report .button-row{margin-top:14px}
+.admin-empty{padding:26px 14px;text-align:center;color:#58665c;border:1px dashed #cbd6ce;border-radius:12px}
+@media(max-width:560px){.admin-summary{gap:7px}.admin-stat{padding:12px 5px}.admin-stat strong{font-size:1.4rem}.admin-stat span{font-size:.78rem}}
+</style></head>
 <body><header><a href="index.html"><h1>학습자료 공유 서비스</h1></a></header><main>
-<div class="top-actions"><h2>신고 관리</h2><a class="back" href="search.html">← 자료 탐색</a></div>
-<section class="auth-box"><h3>관리자 로그인</h3><div class="auth-fields"><input id="email" type="email" placeholder="관리자 이메일" autocomplete="email"><input id="password" type="password" placeholder="비밀번호" autocomplete="current-password"></div><div class="button-row"><button id="login" type="button">로그인</button><button id="logout" type="button" class="secondary" hidden>로그아웃</button></div><p id="authStatus" class="message" aria-live="polite"></p></section>
-<section id="adminPanel" hidden><div class="top-actions"><h3>접수된 신고 (<span id="count">0</span>건)</h3><button id="reload" type="button" class="secondary">새로고침</button></div><div id="reports" class="results"></div><p id="status" class="message" aria-live="polite"></p></section>
+<div class="admin-head"><h2>신고 관리</h2><a class="back" href="search.html">← 자료 탐색</a></div>
+<section class="admin-auth" aria-label="관리자 인증">
+ <div id="loginArea"><h3>관리자 로그인</h3><div class="auth-fields"><input id="email" type="email" placeholder="관리자 이메일" autocomplete="email"><input id="password" type="password" placeholder="비밀번호" autocomplete="current-password"></div><button id="login" type="button">로그인</button></div>
+ <div id="verifiedArea" class="admin-verified" hidden><div><strong id="verifiedTitle">관리자 인증 완료</strong><p id="verifiedEmail"></p></div><button id="logout" type="button" class="secondary">로그아웃</button></div>
+ <p id="authStatus" class="message" aria-live="polite"></p>
+</section>
+<section id="adminPanel" hidden>
+ <div class="admin-summary" aria-label="신고 현황">
+  <div class="admin-stat"><strong id="pendingCount">0</strong><span>처리 대기</span></div>
+  <div class="admin-stat"><strong id="completedCount">0</strong><span>처리 완료</span></div>
+  <div class="admin-stat"><strong id="totalCount">0</strong><span>전체 신고</span></div>
+ </div>
+ <div class="admin-head"><h3>신고 내역</h3><button id="reload" type="button" class="secondary">새로고침</button></div>
+ <div class="admin-tabs" role="group" aria-label="신고 상태 필터">
+  <button type="button" data-filter="all" aria-pressed="true">전체</button>
+  <button type="button" data-filter="pending" aria-pressed="false">처리 대기</button>
+  <button type="button" data-filter="completed" aria-pressed="false">처리 완료</button>
+ </div>
+ <div id="reports" class="results"></div><p id="status" class="message" aria-live="polite"></p>
+</section>
 </main><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.0/dist/umd/supabase.min.js"></script><script src="supabase-config.js"></script><script>
 const $=id=>document.getElementById(id);
-let admin=false;
+let admin=false,allReports=[],materials=new Map(),activeFilter="all",refreshing=false;
+const labels={pending:"처리 대기",dismissed:"신고 기각",hidden:"자료 비공개",resolved:"처리 완료"};
 function message(id,text,error=false){$(id).textContent=text;$(id).className="message "+(error?"error":"success");}
+function el(tag,cls,text){const node=document.createElement(tag);if(cls)node.className=cls;if(text!==undefined)node.textContent=text;return node;}
 async function refresh(){
- const {data:{user}}=await db.auth.getUser();
- $("logout").hidden=!user;$("login").hidden=!!user;$("email").disabled=!!user;$("password").disabled=!!user;
- if(!user){admin=false;$("adminPanel").hidden=true;message("authStatus","관리자 계정으로 로그인해 주세요.");return;}
- const {data,error}=await db.rpc("is_site_admin");
- admin=!error&&data===true;$("adminPanel").hidden=!admin;
- message("authStatus",admin?"관리자 인증 완료":"이 계정에는 관리자 권한이 없습니다.",!admin);
- if(admin)await load();
+ if(refreshing)return;refreshing=true;
+ try{
+  const {data:{user},error:userError}=await db.auth.getUser();
+  if(userError)throw userError;
+  $("loginArea").hidden=!!user;$("verifiedArea").hidden=!user;
+  if(!user){admin=false;$("adminPanel").hidden=true;message("authStatus","관리자 계정으로 로그인해 주세요.");return;}
+  $("verifiedEmail").textContent=user.email||"로그인됨";
+  const {data,error}=await db.rpc("is_site_admin");
+  admin=!error&&data===true;$("adminPanel").hidden=!admin;
+  $("verifiedTitle").textContent=admin?"관리자 인증 완료":"일반 사용자 로그인";
+  message("authStatus",admin?"":"이 계정에는 관리자 권한이 없습니다.",!admin);
+  if(admin)await load();
+ }catch(e){admin=false;$("adminPanel").hidden=true;message("authStatus",e.message||"인증 확인에 실패했습니다.",true);}
+ finally{refreshing=false;}
 }
 $("login").onclick=async()=>{const {error}=await db.auth.signInWithPassword({email:$("email").value.trim(),password:$("password").value});if(error)message("authStatus",error.message,true);else refresh();};
-$("logout").onclick=async()=>{await db.auth.signOut();refresh();};
-async function load(){
- if(!admin)return;
- message("status","신고 목록을 불러오는 중입니다...");
- const {data,error}=await db.from("material_reports").select("id,material_id,reason,status,created_at,reviewed_at").order("created_at",{ascending:false}).limit(500);
- if(error){message("status",error.message,true);return;}
- const ids=[...new Set((data||[]).map(r=>r.material_id))];
- let materials=new Map();
- if(ids.length){const {data:rows,error:materialError}=await db.from("materials").select("id,title,subject,unit,pdf_path,is_hidden").in("id",ids);if(materialError){message("status",materialError.message,true);return;}materials=new Map((rows||[]).map(m=>[m.id,m]));}
- $("count").textContent=String((data||[]).filter(r=>r.status==="pending").length);
+$("logout").onclick=async()=>{const {error}=await db.auth.signOut();if(error)message("authStatus",error.message,true);else refresh();};
+function render(){
+ const pending=allReports.filter(r=>r.status==="pending").length;
+ $("pendingCount").textContent=String(pending);
+ $("completedCount").textContent=String(allReports.length-pending);
+ $("totalCount").textContent=String(allReports.length);
+ for(const btn of document.querySelectorAll("[data-filter]")){const selected=btn.dataset.filter===activeFilter;btn.setAttribute("aria-pressed",String(selected));btn.textContent=({all:"전체",pending:"처리 대기",completed:"처리 완료"}[btn.dataset.filter])+" ("+(btn.dataset.filter==="all"?allReports.length:btn.dataset.filter==="pending"?pending:allReports.length-pending)+")";}
+ const shown=allReports.filter(r=>activeFilter==="all"||(activeFilter==="pending"?r.status==="pending":r.status!=="pending"));
  $("reports").replaceChildren();
- for(const report of data||[]){
-  const m=materials.get(report.material_id);
-  const card=document.createElement("article");card.className="card";
-  const title=document.createElement("h3");title.textContent=m?.title||"삭제된 자료";card.append(title);
-  const info=document.createElement("p");info.className="meta";info.textContent=[m?.subject,m?.unit,new Date(report.created_at).toLocaleString("ko-KR"),"상태: "+({pending:"접수",dismissed:"기각",hidden:"숨김 처리",resolved:"처리 완료"}[report.status]||report.status)].filter(Boolean).join(" · ");card.append(info);
-  const reason=document.createElement("p");reason.textContent="신고 사유: "+report.reason;card.append(reason);
-  if(m){const link=document.createElement("a");link.textContent="PDF 확인";link.target="_blank";link.rel="noopener noreferrer";link.href=db.storage.from(PDF_BUCKET).getPublicUrl(m.pdf_path).data.publicUrl;card.append(link);}
+ if(!shown.length){$("reports").append(el("p","admin-empty",activeFilter==="pending"?"처리 대기 중인 신고가 없습니다.":activeFilter==="completed"?"처리 완료된 신고가 없습니다.":"접수된 신고가 없습니다."));return;}
+ for(const report of shown){
+  const m=materials.get(report.material_id),card=el("article","admin-report");
+  const head=el("div","admin-report-head"),title=el("h4","",m?.title||"삭제되었거나 조회할 수 없는 자료"),chip=el("span","admin-chip "+(report.status==="pending"?"pending":report.status==="hidden"?"hidden":""),labels[report.status]||report.status);
+  head.append(title,chip);card.append(head);
+  const info=el("p","meta",[m?.subject,m?.unit,new Date(report.created_at).toLocaleString("ko-KR")+" 접수"].filter(Boolean).join(" · "));card.append(info);
+  card.append(el("p","reason","신고 사유: "+report.reason));
+  if(report.status!=="pending"){const outcome={dismissed:"신고 기각 · 자료 공개 유지",hidden:"자료 비공개 처리",resolved:"신고 처리 완료"}[report.status]||"처리 완료";card.append(el("p","outcome","처리 결과: "+outcome));}
+  if(m?.pdf_path){const link=el("a","","PDF 확인");link.target="_blank";link.rel="noopener noreferrer";link.href=db.storage.from(PDF_BUCKET).getPublicUrl(m.pdf_path).data.publicUrl;card.append(link);}
   if(report.status==="pending"){
-   const actions=document.createElement("div");actions.className="button-row";
-   for(const [action,label] of [["hidden","자료 숨김"],["dismissed","신고 기각"],["resolved","처리 완료"]]){
-    const button=document.createElement("button");button.type="button";button.className=action==="hidden"?"":"secondary";button.textContent=label;
-    button.onclick=async()=>{if(!confirm(label+" 처리하시겠습니까?"))return;button.disabled=true;const {error}=await db.rpc("moderate_material_report",{p_report_id:report.id,p_action:action});if(error){alert("처리 실패: "+error.message);button.disabled=false;}else await load();};
+   const actions=el("div","button-row");
+   for(const [action,label] of [["hidden","자료 비공개"],["dismissed","신고 기각"],["resolved","처리 완료"]]){
+    const button=el("button",action==="hidden"?"":"secondary",label);button.type="button";
+    button.onclick=async()=>{if(!confirm(label+" 처리하시겠습니까?"))return;for(const b of actions.querySelectorAll("button"))b.disabled=true;const {error}=await db.rpc("moderate_material_report",{p_report_id:report.id,p_action:action});if(error){message("status","처리 실패: "+error.message,true);for(const b of actions.querySelectorAll("button"))b.disabled=false;}else await load();};
     actions.append(button);
    }
    card.append(actions);
   }
   $("reports").append(card);
  }
- if(!(data||[]).length){const p=document.createElement("p");p.className="empty";p.textContent="접수된 신고가 없습니다."; $("reports").append(p);}
- message("status","신고 목록을 불러왔습니다.");
 }
+async function load(){
+ if(!admin)return;
+ message("status","신고 목록을 불러오는 중입니다...");
+ const {data,error}=await db.from("material_reports").select("id,material_id,reason,status,created_at,reviewed_at").order("created_at",{ascending:false}).limit(500);
+ if(error){message("status",error.message,true);return;}
+ const ids=[...new Set((data||[]).map(r=>r.material_id))];let nextMaterials=new Map();
+ if(ids.length){const {data:rows,error:materialError}=await db.from("materials").select("id,title,subject,unit,pdf_path,is_hidden").in("id",ids);if(materialError){message("status",materialError.message,true);return;}nextMaterials=new Map((rows||[]).map(m=>[m.id,m]));}
+ allReports=data||[];materials=nextMaterials;render();message("status","신고 목록을 불러왔습니다.");
+}
+for(const btn of document.querySelectorAll("[data-filter]"))btn.onclick=()=>{activeFilter=btn.dataset.filter;render();};
 $("reload").onclick=load;
 db.auth.onAuthStateChange(()=>setTimeout(refresh,0));refresh();
 </script></body></html>
