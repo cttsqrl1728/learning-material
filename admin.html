@@ -52,21 +52,23 @@ const $=id=>document.getElementById(id);
 let admin=false,allReports=[],materials=new Map(),activeFilter="all",refreshing=false;
 const labels={pending:"처리 대기",dismissed:"신고 기각",hidden:"자료 비공개",resolved:"처리 완료"};
 function message(id,text,error=false){$(id).textContent=text;$(id).className="message "+(error?"error":"success");}
+function isMissingSession(error){return error?.name==="AuthSessionMissingError"||/auth session missing/i.test(error?.message||"");}
+function showLoggedOut(text="관리자 계정으로 로그인해 주세요."){admin=false;allReports=[];materials=new Map();$("adminPanel").hidden=true;$("verifiedArea").hidden=true;$("loginArea").hidden=false;message("authStatus",text);}
 function el(tag,cls,text){const node=document.createElement(tag);if(cls)node.className=cls;if(text!==undefined)node.textContent=text;return node;}
 async function refresh(){
  if(refreshing)return;refreshing=true;
  try{
   const {data:{user},error:userError}=await db.auth.getUser();
-  if(userError)throw userError;
+  if(userError){if(isMissingSession(userError)){showLoggedOut();return;}throw userError;}
   $("loginArea").hidden=!!user;$("verifiedArea").hidden=!user;
-  if(!user){admin=false;$("adminPanel").hidden=true;message("authStatus","관리자 계정으로 로그인해 주세요.");return;}
+  if(!user){showLoggedOut();return;}
   $("verifiedEmail").textContent=user.email||"로그인됨";
   const {data,error}=await db.rpc("is_site_admin");
   admin=!error&&data===true;$("adminPanel").hidden=!admin;
   $("verifiedTitle").textContent=admin?"관리자 인증 완료":"일반 사용자 로그인";
   message("authStatus",admin?"":"이 계정에는 관리자 권한이 없습니다.",!admin);
   if(admin)await load();
- }catch(e){admin=false;$("adminPanel").hidden=true;message("authStatus",e.message||"인증 확인에 실패했습니다.",true);}
+ }catch(e){if(isMissingSession(e))showLoggedOut();else{admin=false;$("adminPanel").hidden=true;message("authStatus",e.message||"인증 확인에 실패했습니다.",true);}}
  finally{refreshing=false;}
 }
 $("login").onclick=async()=>{const {error}=await db.auth.signInWithPassword({email:$("email").value.trim(),password:$("password").value});if(error)message("authStatus",error.message,true);else refresh();};
@@ -74,15 +76,14 @@ $("logout").onclick=async()=>{
  const button=$("logout");button.disabled=true;
  try{
   const {error}=await db.auth.signOut({scope:"local"});
-  if(error && error.name!=="AuthSessionMissingError" && !/auth session missing/i.test(error.message||"")){
+  if(error && !isMissingSession(error)){
    message("authStatus","로그아웃 실패: "+error.message,true);return;
   }
-  admin=false;allReports=[];materials=new Map();
-  $("adminPanel").hidden=true;$("verifiedArea").hidden=true;$("loginArea").hidden=false;
   $("password").value="";
-  message("authStatus","로그아웃되었습니다.");
+  showLoggedOut("로그아웃되었습니다.");
  }catch(error){
-  message("authStatus","로그아웃 처리 중 오류: "+(error.message||error),true);
+  if(isMissingSession(error))showLoggedOut("로그아웃되었습니다.");
+  else message("authStatus","로그아웃 처리 중 오류: "+(error.message||error),true);
  }finally{button.disabled=false;}
 };
 function render(){
