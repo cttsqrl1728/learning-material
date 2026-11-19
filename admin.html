@@ -2,6 +2,8 @@
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>신고 관리 | 학습자료 공유 서비스</title><link rel="stylesheet" href="style.css">
 <style>
+/* Ensure hidden login/logout states remain hidden despite layout display rules. */
+[hidden]{display:none!important}
 .admin-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
 .admin-auth{padding:18px;border:1px solid #d8e0da;border-radius:12px;background:#f7faf8;margin:16px 0 24px}
 .admin-auth h3{margin:0 0 12px}.admin-auth .auth-fields{margin-bottom:10px}
@@ -49,30 +51,33 @@
 </section>
 </main><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.0/dist/umd/supabase.min.js"></script><script src="supabase-config.js"></script><script>
 const $=id=>document.getElementById(id);
-let admin=false,allReports=[],materials=new Map(),activeFilter="all",refreshing=false;
+let admin=false,allReports=[],materials=new Map(),activeFilter="all",refreshing=false,authVersion=0;
 const labels={pending:"처리 대기",dismissed:"신고 기각",hidden:"자료 비공개",resolved:"처리 완료"};
 function message(id,text,error=false){$(id).textContent=text;$(id).className="message "+(error?"error":"success");}
 function isMissingSession(error){return error?.name==="AuthSessionMissingError"||/auth session missing/i.test(error?.message||"");}
-function showLoggedOut(text="관리자 계정으로 로그인해 주세요."){admin=false;allReports=[];materials=new Map();$("adminPanel").hidden=true;$("verifiedArea").hidden=true;$("loginArea").hidden=false;message("authStatus",text);}
+function showLoggedOut(text="관리자 계정으로 로그인해 주세요."){admin=false;allReports=[];materials=new Map();$("adminPanel").hidden=true;$("verifiedArea").hidden=true;$("loginArea").hidden=false;$("verifiedEmail").textContent="";message("authStatus",text);}
 function el(tag,cls,text){const node=document.createElement(tag);if(cls)node.className=cls;if(text!==undefined)node.textContent=text;return node;}
 async function refresh(){
- if(refreshing)return;refreshing=true;
+ if(refreshing)return;refreshing=true;const version=authVersion;
  try{
   const {data:{user},error:userError}=await db.auth.getUser();
+  if(version!==authVersion)return;
   if(userError){if(isMissingSession(userError)){showLoggedOut();return;}throw userError;}
   $("loginArea").hidden=!!user;$("verifiedArea").hidden=!user;
   if(!user){showLoggedOut();return;}
   $("verifiedEmail").textContent=user.email||"로그인됨";
   const {data,error}=await db.rpc("is_site_admin");
+  if(version!==authVersion)return;
   admin=!error&&data===true;$("adminPanel").hidden=!admin;
   $("verifiedTitle").textContent=admin?"관리자 인증 완료":"일반 사용자 로그인";
   message("authStatus",admin?"":"이 계정에는 관리자 권한이 없습니다.",!admin);
   if(admin)await load();
- }catch(e){if(isMissingSession(e))showLoggedOut();else{admin=false;$("adminPanel").hidden=true;message("authStatus",e.message||"인증 확인에 실패했습니다.",true);}}
+ }catch(e){if(version!==authVersion)return;if(isMissingSession(e))showLoggedOut();else{admin=false;$("adminPanel").hidden=true;message("authStatus",e.message||"인증 확인에 실패했습니다.",true);}}
  finally{refreshing=false;}
 }
 $("login").onclick=async()=>{const {error}=await db.auth.signInWithPassword({email:$("email").value.trim(),password:$("password").value});if(error)message("authStatus",error.message,true);else refresh();};
 $("logout").onclick=async()=>{
+ authVersion++;
  const button=$("logout");button.disabled=true;
  try{
   const {error}=await db.auth.signOut({scope:"local"});
@@ -136,5 +141,5 @@ async function load(){
 }
 for(const btn of document.querySelectorAll("[data-filter]"))btn.onclick=()=>{activeFilter=btn.dataset.filter;render();};
 $("reload").onclick=load;
-db.auth.onAuthStateChange(()=>setTimeout(refresh,0));refresh();
+db.auth.onAuthStateChange(()=>{authVersion++;setTimeout(refresh,0);});refresh();
 </script></body></html>
