@@ -23,7 +23,7 @@
 .admin-report .reason{padding:12px;border-radius:8px;background:#f7faf8;margin:12px 0}
 .admin-report .outcome{margin:10px 0;color:#375e47}
 .admin-report .button-row{margin-top:14px}
-.admin-empty{padding:26px 14px;text-align:center;color:#58665c;border:1px dashed #cbd6ce;border-radius:12px}
+.admin-section{margin:20px 0 28px}.admin-section-title{display:flex;align-items:baseline;gap:10px;margin:0 0 10px;padding-bottom:10px;border-bottom:1px solid #d8e0da}.admin-section-title h4{font-size:1.1rem;margin:0}.admin-section-title span{font-size:.85rem;color:#59665d}.admin-empty{padding:26px 14px;text-align:center;color:#58665c;border:1px dashed #cbd6ce;border-radius:12px}
 @media(max-width:560px){.admin-summary{gap:7px}.admin-stat{padding:12px 5px}.admin-stat strong{font-size:1.4rem}.admin-stat span{font-size:.78rem}}
 </style></head>
 <body><header><a href="index.html"><h1>학습자료 공유 서비스</h1></a></header><main>
@@ -45,7 +45,7 @@
   <button type="button" data-filter="pending" aria-pressed="false">처리 대기</button>
   <button type="button" data-filter="completed" aria-pressed="false">처리 완료</button>
  </div>
- <div id="reports" class="results"></div><p id="status" class="message" aria-live="polite"></p>
+ <div id="reports" class="results" aria-live="polite"></div><p id="status" class="message" aria-live="polite"></p>
 </section>
 </main><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.0/dist/umd/supabase.min.js"></script><script src="supabase-config.js"></script><script>
 const $=id=>document.getElementById(id);
@@ -77,9 +77,17 @@ function render(){
  $("completedCount").textContent=String(allReports.length-pending);
  $("totalCount").textContent=String(allReports.length);
  for(const btn of document.querySelectorAll("[data-filter]")){const selected=btn.dataset.filter===activeFilter;btn.setAttribute("aria-pressed",String(selected));btn.textContent=({all:"전체",pending:"처리 대기",completed:"처리 완료"}[btn.dataset.filter])+" ("+(btn.dataset.filter==="all"?allReports.length:btn.dataset.filter==="pending"?pending:allReports.length-pending)+")";}
- const shown=allReports.filter(r=>activeFilter==="all"||(activeFilter==="pending"?r.status==="pending":r.status!=="pending"));
+ const pendingReports=allReports.filter(r=>r.status==="pending");
+ const completedReports=allReports.filter(r=>r.status!=="pending");
  $("reports").replaceChildren();
- if(!shown.length){$("reports").append(el("p","admin-empty",activeFilter==="pending"?"처리 대기 중인 신고가 없습니다.":activeFilter==="completed"?"처리 완료된 신고가 없습니다.":"접수된 신고가 없습니다."));return;}
+ const groups=activeFilter==="pending"?[["접수된 신고",pendingReports,"처리 대기 중인 신고가 없습니다."]]:activeFilter==="completed"?[["처리한 신고 보관함",completedReports,"처리 완료된 신고가 없습니다."]]:[["접수된 신고",pendingReports,"처리 대기 중인 신고가 없습니다."],["처리한 신고 보관함",completedReports,"처리 완료된 신고가 없습니다."]];
+ for(const [heading,shown,emptyText] of groups){
+  const section=el("section","admin-section");
+  const headingRow=el("div","admin-section-title");
+  headingRow.append(el("h4","",heading),el("span","("+shown.length+"건)"));
+  section.append(headingRow);
+  if(!shown.length)section.append(el("p","admin-empty",emptyText));
+  const list=el("div","admin-report-list");
  for(const report of shown){
   const m=materials.get(report.material_id),card=el("article","admin-report");
   const head=el("div","admin-report-head"),title=el("h4","",m?.title||"삭제되었거나 조회할 수 없는 자료"),chip=el("span","admin-chip "+(report.status==="pending"?"pending":report.status==="hidden"?"hidden":""),labels[report.status]||report.status);
@@ -97,7 +105,9 @@ function render(){
    }
    card.append(actions);
   }
-  $("reports").append(card);
+  list.append(card);
+ }
+ section.append(list);$("reports").append(section);
  }
 }
 async function load(){
