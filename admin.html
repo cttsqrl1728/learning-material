@@ -70,7 +70,21 @@ async function refresh(){
  finally{refreshing=false;}
 }
 $("login").onclick=async()=>{const {error}=await db.auth.signInWithPassword({email:$("email").value.trim(),password:$("password").value});if(error)message("authStatus",error.message,true);else refresh();};
-$("logout").onclick=async()=>{const {error}=await db.auth.signOut();if(error)message("authStatus",error.message,true);else refresh();};
+$("logout").onclick=async()=>{
+ const button=$("logout");button.disabled=true;
+ try{
+  const {error}=await db.auth.signOut({scope:"local"});
+  if(error && error.name!=="AuthSessionMissingError" && !/auth session missing/i.test(error.message||"")){
+   message("authStatus","로그아웃 실패: "+error.message,true);return;
+  }
+  admin=false;allReports=[];materials=new Map();
+  $("adminPanel").hidden=true;$("verifiedArea").hidden=true;$("loginArea").hidden=false;
+  $("password").value="";
+  message("authStatus","로그아웃되었습니다.");
+ }catch(error){
+  message("authStatus","로그아웃 처리 중 오류: "+(error.message||error),true);
+ }finally{button.disabled=false;}
+};
 function render(){
  const pending=allReports.filter(r=>r.status==="pending").length;
  $("pendingCount").textContent=String(pending);
